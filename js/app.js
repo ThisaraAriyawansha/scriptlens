@@ -13,14 +13,24 @@
   var view = "data";
   var searchTimer = null;
   var openRow = null;
+  var QUERY_LIMIT = 1000;   // rows drawn for a query result (export gets all)
+  var queryText = "";
+  var queryIsDefault = true;
+  var queryState = null;    // { result, ms } or { error }
+  var queryOut = null;
+  var RECENT_MAX = 8;
+  var RECENT_MAX_BYTES = 50 * 1048576;
+  var IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
   function $(id) { return document.getElementById(id); }
-  var openBtn = $("openBtn"), openBtn2 = $("openBtn2");
+  var openBtn = $("openBtn"), openBtn2 = $("openBtn2"), closeBtn = $("closeBtn");
+  var openScriptBtn = $("openScriptBtn"), sampleBtn = $("sampleBtn"), scriptInput = $("scriptInput");
+  var recentList = $("recentList"), clearRecentBtn = $("clearRecentBtn");
   var fileInput = $("fileInput"), fileName = $("fileName"), engineStatus = $("engineStatus");
   var welcome = $("welcome"), dropzone = $("dropzone"), viewer = $("viewer");
   var tableList = $("tableList"), tableCount = $("tableCount"), tableSearch = $("tableSearch"), hideEmpty = $("hideEmpty");
   var tableTitle = $("tableTitle"), rowCount = $("rowCount"), search = $("search"), exportBtn = $("exportBtn");
-  var tabData = $("tabData"), tabStructure = $("tabStructure");
+  var tabData = $("tabData"), tabStructure = $("tabStructure"), tabQuery = $("tabQuery");
   var gridWrap = $("gridWrap"), rangeInfo = $("rangeInfo");
   var pager = $("pager"), prevBtn = $("prevBtn"), nextBtn = $("nextBtn"), pageInfo = $("pageInfo");
   var scrim = $("scrim"), drawer = $("drawer"), drawerTitle = $("drawerTitle"), drawerBody = $("drawerBody");
@@ -33,8 +43,16 @@
   var EMPTY_ICONS = {
     search: '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
     table: '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>',
-    error: '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17v.5"/></svg>'
+    error: '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17v.5"/></svg>',
+    query: '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2.5"/><path d="M6 9l3 3-3 3M11 15h6"/></svg>'
   };
+  var CLOCK_ICON = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
+  var REMOVE_ICON = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+
+  // Show the platform's modifier key in shortcut hints.
+  Array.prototype.forEach.call(document.querySelectorAll("kbd.mod"), function (k) {
+    k.textContent = IS_MAC ? "⌘" : "Ctrl";
+  });
 
   function quoteIdent(name) {
     return '"' + String(name).replace(/"/g, '""') + '"';
@@ -128,8 +146,9 @@
     el.appendChild(document.createTextNode(text.slice(i)));
   }
 
-  function showMessage(title, text, kind, action) {
-    gridWrap.innerHTML = "";
+  function showMessage(title, text, kind, action, target) {
+    target = target || gridWrap;
+    target.innerHTML = "";
     var div = document.createElement("div");
     div.className = "empty" + (kind === "error" ? " error" : "");
     div.innerHTML = '<div class="icon">' + (EMPTY_ICONS[kind] || EMPTY_ICONS.table) + "</div><h3></h3><p></p>";
@@ -143,7 +162,7 @@
       b.addEventListener("click", action.run);
       div.appendChild(b);
     }
-    gridWrap.appendChild(div);
+    target.appendChild(div);
   }
 
   // ---- Engine & opening files ----
@@ -153,44 +172,272 @@
     }
   }).then(function (lib) {
     SQL = lib;
-    engineStatus.textContent = "Ready — your file never leaves this computer.";
+    engineStatus.textContent = "Ready — your files never leave this computer.";
+    engineStatus.className = "engine ready";
   }).catch(function () {
     engineStatus.textContent = "Couldn't load the SQLite engine. Check your internet connection and reload the page.";
-    engineStatus.style.color = "var(--red)";
+    engineStatus.className = "engine error";
   });
 
   function pick() { fileInput.click(); }
   openBtn.addEventListener("click", pick);
   openBtn2.addEventListener("click", pick);
+  openScriptBtn.addEventListener("click", function () { scriptInput.click(); });
+  sampleBtn.addEventListener("click", openSample);
+  closeBtn.addEventListener("click", closeDatabase);
 
-  fileInput.addEventListener("change", function () {
-    if (fileInput.files[0]) openFile(fileInput.files[0]);
-    fileInput.value = "";
+  [fileInput, scriptInput].forEach(function (input) {
+    input.addEventListener("change", function () {
+      if (input.files[0]) openFile(input.files[0]);
+      input.value = "";
+    });
   });
 
+  function engineReady() {
+    if (!SQL) showToast("The SQLite engine is still loading. Try again in a moment.");
+    return !!SQL;
+  }
+
   function openFile(file) {
-    if (!SQL) {
-      showToast("The SQLite engine is still loading. Try again in a moment.");
-      return;
-    }
+    if (!engineReady()) return;
     var reader = new FileReader();
     reader.onload = function () {
-      try {
-        var next = new SQL.Database(new Uint8Array(reader.result));
-        next.exec("SELECT name FROM sqlite_master LIMIT 1");   // throws if not a database
-        next.run("PRAGMA query_only = ON;");
-        if (db) db.close();
-        db = next;
-        fileName.textContent = file.name + " — " + formatSize(file.size);
-        welcome.hidden = true;
-        viewer.hidden = false;
-        loadTables();
-      } catch (e) {
-        showToast("“" + file.name + "” isn't a SQLite database.");
+      if (loadBytes(new Uint8Array(reader.result), file.name, file.size)) {
+        saveRecent(file.name, file.size, reader.result);
       }
     };
     reader.readAsArrayBuffer(file);
   }
+
+  // A SQLite file starts with "SQLite format 3\0"; anything else is treated as a SQL script.
+  function isSqliteFile(bytes) {
+    var sig = "SQLite format 3";
+    if (bytes.length < 16) return false;
+    for (var i = 0; i < sig.length; i++) if (bytes[i] !== sig.charCodeAt(i)) return false;
+    return bytes[15] === 0;
+  }
+
+  function loadBytes(bytes, name, size) {
+    var next = null;
+    try {
+      if (isSqliteFile(bytes)) {
+        next = new SQL.Database(bytes);
+        next.exec("SELECT name FROM sqlite_master LIMIT 1");   // throws if the file is damaged
+        showDatabase(next, name + " — " + formatSize(size));
+      } else {
+        next = new SQL.Database();
+        next.exec(new TextDecoder().decode(bytes));
+        showDatabase(next, name + " — SQL script, " + formatSize(size));
+      }
+      return true;
+    } catch (e) {
+      if (next) next.close();
+      if (/\.sql$/i.test(name)) showToast("Couldn't run “" + name + "”: " + e.message);
+      else showToast("“" + name + "” isn't a SQLite database or SQL script.");
+      return false;
+    }
+  }
+
+  function showDatabase(next, label) {
+    next.run("PRAGMA query_only = ON;");
+    if (db) db.close();
+    db = next;
+    fileName.textContent = label;
+    welcome.hidden = true;
+    viewer.hidden = false;
+    closeBtn.hidden = false;
+    queryText = "";
+    queryIsDefault = true;
+    queryState = null;
+    if (view !== "data") setView("data", true);
+    loadTables();
+  }
+
+  function closeDatabase() {
+    if (!db) return;
+    if (!drawer.hidden) closeDetails();
+    db.close();
+    db = null;
+    tables = [];
+    currentTable = null;
+    gridWrap.innerHTML = "";
+    fileName.textContent = "No database open";
+    viewer.hidden = true;
+    closeBtn.hidden = true;
+    welcome.hidden = false;
+    renderRecent();
+    openBtn2.focus();
+  }
+
+  // ---- Sample database ----
+  function openSample() {
+    if (!engineReady()) return;
+    try {
+      showDatabase(buildSample(), "Sample Store.db — sample data");
+    } catch (e) {
+      showToast("Couldn't build the sample: " + e.message);
+    }
+  }
+
+  function buildSample() {
+    var d = new SQL.Database();
+    var seed = 7;
+    function rand(n) { seed = (seed * 16807) % 2147483647; return seed % n; }
+    function pad(n) { return (n < 10 ? "0" : "") + n; }
+    d.exec(
+      "CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT UNIQUE, city TEXT, joined DATE);" +
+      "CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, category TEXT, price REAL NOT NULL, stock INTEGER DEFAULT 0);" +
+      "CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL REFERENCES customers(id), ordered_at DATETIME, status TEXT DEFAULT 'pending');" +
+      "CREATE TABLE order_items (order_id INTEGER NOT NULL REFERENCES orders(id), product_id INTEGER NOT NULL REFERENCES products(id), quantity INTEGER NOT NULL, PRIMARY KEY (order_id, product_id));" +
+      "CREATE TABLE returns (id INTEGER PRIMARY KEY, order_id INTEGER REFERENCES orders(id), reason TEXT);" +
+      "CREATE VIEW order_totals AS SELECT o.id AS order_id, c.name AS customer, o.status, ROUND(SUM(i.quantity * p.price), 2) AS total " +
+      "FROM orders o JOIN customers c ON c.id = o.customer_id JOIN order_items i ON i.order_id = o.id JOIN products p ON p.id = i.product_id GROUP BY o.id;"
+    );
+    var first = ["Ava", "Liam", "Maya", "Noah", "Zara", "Ethan", "Isla", "Kai", "Nina", "Omar", "Priya", "Leo", "Sofia", "Ravi", "Emma", "Hugo"];
+    var last = ["Perera", "Silva", "Chen", "Garcia", "Khan", "Fischer", "Rossi", "Tanaka", "Okafor", "Novak"];
+    var cities = ["Colombo", "London", "Tokyo", "Berlin", "Toronto", "Sydney", "Lisbon", "Nairobi"];
+    var products = [
+      ["Aluminium Laptop Stand", "Accessories", 49.99], ["Mechanical Keyboard", "Accessories", 129], ["Wireless Mouse", "Accessories", 39.5],
+      ["27\" 5K Display", "Displays", 1299], ["USB-C Hub", "Accessories", 59.99], ["Noise-Cancelling Headphones", "Audio", 249],
+      ["Studio Speakers", "Audio", 199], ["Desk Lamp", "Office", 45], ["Ergonomic Chair", "Office", 489],
+      ["Standing Desk", "Office", 699], ["Webcam 4K", "Video", 149], ["Ring Light", "Video", 35.25],
+      ["Portable SSD 1TB", "Storage", 119], ["Notebook Pack", "Office", 12.99]
+    ];
+    var statuses = ["delivered", "delivered", "delivered", "shipped", "pending", "cancelled"];
+    var i, st;
+    d.exec("BEGIN");
+    st = d.prepare("INSERT INTO customers VALUES (?, ?, ?, ?, ?)");
+    for (i = 1; i <= 48; i++) {
+      var f = first[rand(first.length)], l = last[rand(last.length)];
+      st.run([i, f + " " + l, (f + "." + l).toLowerCase() + i + "@example.com",
+        rand(9) ? cities[rand(cities.length)] : null, "2024-" + pad(1 + rand(12)) + "-" + pad(1 + rand(28))]);
+    }
+    st.free();
+    st = d.prepare("INSERT INTO products VALUES (?, ?, ?, ?, ?)");
+    products.forEach(function (p, pi) { st.run([pi + 1, p[0], p[1], p[2], rand(120)]); });
+    st.free();
+    var ord = d.prepare("INSERT INTO orders VALUES (?, ?, ?, ?)");
+    var item = d.prepare("INSERT INTO order_items VALUES (?, ?, ?)");
+    for (i = 1; i <= 160; i++) {
+      ord.run([i, 1 + rand(48), "2025-" + pad(1 + rand(12)) + "-" + pad(1 + rand(28)) + " " + pad(8 + rand(12)) + ":" + pad(rand(60)),
+        statuses[rand(statuses.length)]]);
+      var start = rand(products.length), n = 1 + rand(3);
+      for (var k = 0; k < n; k++) item.run([i, (start + k) % products.length + 1, 1 + rand(4)]);
+    }
+    ord.free();
+    item.free();
+    d.exec("COMMIT");
+    return d;
+  }
+
+  // ---- Recent files (kept in this browser's IndexedDB only) ----
+  var idbPromise = null;
+  function openIdb() {
+    if (!idbPromise) {
+      idbPromise = new Promise(function (resolve, reject) {
+        if (!window.indexedDB) { reject(new Error("IndexedDB unavailable")); return; }
+        var req = indexedDB.open("scriptlens", 1);
+        req.onupgradeneeded = function () {
+          req.result.createObjectStore("meta", { keyPath: "name" });
+          req.result.createObjectStore("files");
+        };
+        req.onsuccess = function () { resolve(req.result); };
+        req.onerror = function () { reject(req.error); };
+      });
+    }
+    return idbPromise;
+  }
+  function idbTx(mode, fn) {
+    return openIdb().then(function (idb) {
+      return new Promise(function (resolve, reject) {
+        var tx = idb.transaction(["meta", "files"], mode);
+        var req = fn(tx.objectStore("meta"), tx.objectStore("files"));
+        tx.oncomplete = function () { resolve(req && req.result); };
+        tx.onerror = tx.onabort = function () { reject(tx.error); };
+      });
+    });
+  }
+  function getRecent() {
+    return idbTx("readonly", function (meta) { return meta.getAll(); }).then(function (list) {
+      return (list || []).sort(function (a, b) { return b.opened - a.opened; });
+    });
+  }
+  function saveRecent(name, size, buffer) {
+    if (size > RECENT_MAX_BYTES) return;
+    idbTx("readwrite", function (meta, files) {
+      meta.put({ name: name, size: size, opened: Date.now() });
+      files.put(buffer, name);
+    }).then(getRecent).then(function (list) {
+      var extra = list.slice(RECENT_MAX);
+      if (extra.length) {
+        return idbTx("readwrite", function (meta, files) {
+          extra.forEach(function (r) { meta.delete(r.name); files.delete(r.name); });
+        });
+      }
+    }).then(renderRecent).catch(function () {});
+  }
+  function removeRecent(name) {
+    return idbTx("readwrite", function (meta, files) { meta.delete(name); files.delete(name); });
+  }
+  function openRecent(r) {
+    if (!engineReady()) return;
+    idbTx("readonly", function (meta, files) { return files.get(r.name); }).then(function (buffer) {
+      if (!buffer) {
+        showToast("“" + r.name + "” is no longer available. Open it again from your computer.");
+        removeRecent(r.name).then(renderRecent);
+        return;
+      }
+      if (loadBytes(new Uint8Array(buffer), r.name, r.size)) saveRecent(r.name, r.size, buffer);
+    }, function () { showToast("Couldn't open “" + r.name + "”."); });
+  }
+
+  function formatWhen(ts) {
+    var d = new Date(ts), now = new Date();
+    var days = Math.round((new Date(now.toDateString()) - new Date(d.toDateString())) / 86400000);
+    var time = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    if (days === 0) return "Today, " + time;
+    if (days === 1) return "Yesterday, " + time;
+    return d.toLocaleDateString([], { month: "short", day: "numeric", year: d.getFullYear() === now.getFullYear() ? undefined : "numeric" });
+  }
+
+  function renderRecent() {
+    getRecent().then(function (list) { drawRecent(list, null); },
+      function () { drawRecent([], "Recent files aren't available in this browser."); });
+  }
+  function drawRecent(list, note) {
+    recentList.innerHTML = "";
+    clearRecentBtn.hidden = !list.length;
+    if (!list.length) {
+      var d = document.createElement("div");
+      d.className = "recent-empty";
+      d.innerHTML = CLOCK_ICON + "<strong></strong><span></span>";
+      d.querySelector("strong").textContent = note ? "Unavailable" : "No Recent Files";
+      d.querySelector("span").textContent = note || "Databases and scripts you open will appear here.";
+      recentList.appendChild(d);
+      return;
+    }
+    list.forEach(function (r) {
+      var isSql = /\.sql$/i.test(r.name);
+      var row = document.createElement("div");
+      row.className = "recent-item";
+      row.innerHTML = '<button type="button" class="recent-open"><span class="file-badge' + (isSql ? " sql" : "") + '">' +
+        (isSql ? "SQL" : "DB") + '</span><span class="recent-text"><span class="recent-name"></span><span class="recent-sub"></span></span></button>' +
+        '<button type="button" class="recent-remove">' + REMOVE_ICON + "</button>";
+      var openEl = row.querySelector(".recent-open"), removeEl = row.querySelector(".recent-remove");
+      row.querySelector(".recent-name").textContent = r.name;
+      row.querySelector(".recent-sub").textContent = formatSize(r.size) + " · " + formatWhen(r.opened);
+      openEl.title = "Open " + r.name;
+      removeEl.title = "Remove from Recent";
+      removeEl.setAttribute("aria-label", "Remove " + r.name + " from Recent");
+      openEl.addEventListener("click", function () { openRecent(r); });
+      removeEl.addEventListener("click", function () { removeRecent(r.name).then(renderRecent); });
+      recentList.appendChild(row);
+    });
+  }
+  clearRecentBtn.addEventListener("click", function () {
+    idbTx("readwrite", function (meta, files) { meta.clear(); files.clear(); }).then(renderRecent);
+  });
+  renderRecent();
 
   function formatSize(b) {
     if (b < 1024) return b + " bytes";
@@ -294,16 +541,22 @@
   }
 
   // ---- Data / Structure ----
-  function setView(v) {
+  function setView(v, silent) {
     view = v;
     tabData.setAttribute("aria-selected", v === "data");
     tabStructure.setAttribute("aria-selected", v === "structure");
+    tabQuery.setAttribute("aria-selected", v === "query");
     search.hidden = v !== "data";
-    exportBtn.hidden = v !== "data";
-    render();
+    exportBtn.hidden = v === "structure";
+    if (!silent) render();
   }
   tabData.addEventListener("click", function () { setView("data"); });
   tabStructure.addEventListener("click", function () { setView("structure"); });
+  tabQuery.addEventListener("click", function () {
+    setView("query");
+    var ta = gridWrap.querySelector("textarea");
+    if (ta) ta.focus();
+  });
 
   function render() {
     if (!currentTable) return;
@@ -311,7 +564,24 @@
     tableTitle.textContent = currentTable;
     tableTitle.title = currentTable;
     rowCount.textContent = fmt(t ? t.count : 0) + (t && t.count === 1 ? " row" : " rows");
-    if (view === "structure") renderStructure(); else renderData();
+    if (view === "structure") renderStructure();
+    else if (view === "query") renderQuery();
+    else renderData();
+  }
+
+  // Fill a table cell with a value from SQLite, highlighting q.
+  function fillCell(td, cell, q) {
+    if (cell === null) {
+      td.textContent = "NULL";
+      td.className = "null";
+    } else if (cell instanceof Uint8Array) {
+      td.textContent = "BLOB — " + formatSize(cell.length);
+      td.className = "null";
+    } else {
+      var text = String(cell);
+      setHighlighted(td, text.length > 400 ? text.slice(0, 400) + "…" : text, q);
+      if (typeof cell === "number") td.className = "num";
+    }
   }
 
   function whereClause() {
@@ -416,17 +686,7 @@
         tr.appendChild(n);
         row.forEach(function (cell) {
           var td = document.createElement("td");
-          if (cell === null) {
-            td.textContent = "NULL";
-            td.className = "null";
-          } else if (cell instanceof Uint8Array) {
-            td.textContent = "BLOB — " + formatSize(cell.length);
-            td.className = "null";
-          } else {
-            var text = String(cell);
-            setHighlighted(td, text.length > 400 ? text.slice(0, 400) + "…" : text, q);
-            if (typeof cell === "number") td.className = "num";
-          }
+          fillCell(td, cell, q);
           tr.appendChild(td);
         });
         body.appendChild(tr);
@@ -484,6 +744,96 @@
     }
   }
 
+  // ---- Query console ----
+  function renderQuery() {
+    pager.hidden = true;
+    if (queryIsDefault) queryText = "SELECT * FROM " + quoteIdent(currentTable) + " LIMIT 100;";
+    gridWrap.innerHTML = "";
+    var pane = document.createElement("div");
+    pane.className = "query-pane";
+    pane.innerHTML = '<div class="query-editor"><textarea spellcheck="false" autocomplete="off" aria-label="SQL query"></textarea>' +
+      '<div class="query-bar"><span>Read-only — statements that change data are blocked.</span><span class="spacer"></span>' +
+      '<span class="keys"><kbd>' + (IS_MAC ? "⌘" : "Ctrl") + '</kbd><kbd>↵</kbd></span>' +
+      '<button class="btn primary" type="button">Run</button></div></div><div class="query-result"></div>';
+    var ta = pane.querySelector("textarea");
+    ta.value = queryText;
+    ta.addEventListener("input", function () { queryText = ta.value; queryIsDefault = false; });
+    ta.addEventListener("keydown", function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); runQuery(); }
+    });
+    pane.querySelector(".btn").addEventListener("click", runQuery);
+    queryOut = pane.querySelector(".query-result");
+    gridWrap.appendChild(pane);
+    showQueryResult();
+  }
+
+  function runQuery() {
+    var sql = queryText.trim();
+    if (!sql) return;
+    var t0 = performance.now();
+    try {
+      var res = db.exec(sql);
+      queryState = { result: res.length ? res[res.length - 1] : null, ms: performance.now() - t0 };
+    } catch (e) {
+      queryState = { error: e.message };
+    }
+    db.run("PRAGMA query_only = ON;");   // a query can't switch read-only off
+    showQueryResult();
+  }
+
+  function showQueryResult() {
+    if (!queryOut) return;
+    exportBtn.disabled = !(queryState && queryState.result);
+    if (!queryState) {
+      rangeInfo.textContent = "";
+      showMessage("Run a Query", "Write a SELECT statement above, then click Run.", "query", null, queryOut);
+      return;
+    }
+    if (queryState.error) {
+      rangeInfo.textContent = "";
+      showMessage("Query Failed", queryState.error, "error", null, queryOut);
+      return;
+    }
+    var took = " · " + (queryState.ms < 1 ? "<1" : Math.round(queryState.ms)) + " ms";
+    var r = queryState.result;
+    if (!r) {
+      rangeInfo.textContent = "Done" + took;
+      showMessage("No Rows Returned", "The statement ran but didn't return any rows.", "table", null, queryOut);
+      return;
+    }
+    var total = r.values.length;
+    rangeInfo.textContent = fmt(total) + (total === 1 ? " row" : " rows") +
+      (total > QUERY_LIMIT ? " (showing first " + fmt(QUERY_LIMIT) + ")" : "") + took;
+    var tbl = document.createElement("table");
+    var hr = document.createElement("tr");
+    ["#"].concat(r.columns).forEach(function (c, i) {
+      var th = document.createElement("th");
+      th.className = "plain" + (i ? "" : " rownum");
+      th.textContent = c;
+      hr.appendChild(th);
+    });
+    var head = document.createElement("thead");
+    head.appendChild(hr);
+    tbl.appendChild(head);
+    var body = document.createElement("tbody");
+    r.values.slice(0, QUERY_LIMIT).forEach(function (row, ri) {
+      var tr = document.createElement("tr");
+      var n = document.createElement("td");
+      n.className = "rownum";
+      n.textContent = fmt(ri + 1);
+      tr.appendChild(n);
+      row.forEach(function (cell) {
+        var td = document.createElement("td");
+        fillCell(td, cell, "");
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    tbl.appendChild(body);
+    queryOut.innerHTML = "";
+    queryOut.appendChild(tbl);
+  }
+
   // ---- Search, paging, export ----
   search.addEventListener("input", function () {
     clearTimeout(searchTimer);
@@ -503,22 +853,30 @@
     return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }
 
+  function downloadCsv(result, name) {
+    var lines = [result.columns.map(csvCell).join(",")];
+    result.values.forEach(function (r) { lines.push(r.map(csvCell).join(",")); });
+    var blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    showToast("Exported " + fmt(result.values.length) + " rows");
+  }
+
   exportBtn.addEventListener("click", function () {
     try {
+      if (view === "query") {
+        if (queryState && queryState.result) downloadCsv(queryState.result, "query-results.csv");
+        return;
+      }
       var w = whereClause();
       var res = db.exec("SELECT * FROM " + quoteIdent(currentTable) + w.sql + orderClause(), w.params);
       if (!res.length) return;
-      var lines = [res[0].columns.map(csvCell).join(",")];
-      res[0].values.forEach(function (r) { lines.push(r.map(csvCell).join(",")); });
-      var blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
-      var a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = currentTable + (search.value.trim() ? "-filtered" : "") + ".csv";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
-      showToast("Exported " + fmt(res[0].values.length) + " rows");
+      downloadCsv(res[0], currentTable + (search.value.trim() ? "-filtered" : "") + ".csv");
     } catch (e) {
       showToast("Export failed: " + e.message);
     }
@@ -587,6 +945,11 @@
 
   // ---- Keyboard shortcuts ----
   document.addEventListener("keydown", function (e) {
+    if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "o") {
+      e.preventDefault();
+      pick();
+      return;
+    }
     if (e.key === "Escape") {
       if (!drawer.hidden) { closeDetails(); return; }
       if (document.activeElement === search && search.value) { search.value = ""; currentPage = 0; renderData(); return; }

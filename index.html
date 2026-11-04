@@ -68,46 +68,75 @@
       </button>
     </div>
   </div>
+  <button class="btn plain theme-btn" id="closeBtn" type="button" title="Close Database" aria-label="Close Database" hidden>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+  </button>
   <button class="btn" id="openBtn" type="button">
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
     <span class="open-label">Open&hellip;</span>
   </button>
-  <input type="file" id="fileInput" accept=".sqlite,.sqlite3,.db,.db3,.s3db,application/x-sqlite3,application/octet-stream">
+  <input type="file" id="fileInput" accept=".sqlite,.sqlite3,.db,.db3,.s3db,.sql,application/x-sqlite3,application/octet-stream">
+  <input type="file" id="scriptInput" accept=".sql,text/plain,application/sql">
 </header>
 
 <!-- Welcome screen -->
 <div class="welcome" id="welcome">
   <div class="welcome-inner">
-    <div class="dropzone" id="dropzone">
-      <img class="big-icon" src="images/icon-192.png" width="96" height="96" alt="ScriptLens">
-      <h1>Open a Database</h1>
-      <p>Drop a .sqlite, .sqlite3 or .db file anywhere in this window,<br>or choose one from your computer.</p>
-      <div class="actions">
-        <button class="btn primary large" type="button" id="openBtn2">Choose File&hellip;</button>
-      </div>
-      <p class="engine" id="engineStatus">Loading SQLite engine&hellip;</p>
-    </div>
+    <section class="launcher" id="dropzone" aria-label="Welcome to ScriptLens">
+      <div class="launcher-main">
+        <img class="big-icon" src="images/icon-192.png" width="96" height="96" alt="ScriptLens">
+        <h1>Welcome to ScriptLens</h1>
+        <p class="tagline">Explore SQLite databases and SQL scripts, right in your browser.</p>
 
-    <div class="group">
-      <div class="group-row">
+        <div class="launch-actions">
+          <button class="launch-item" type="button" id="openBtn2">
+            <span class="sq lg blue"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+            <span class="launch-text"><strong>Open a Database&hellip;</strong><small>.sqlite, .sqlite3 or .db file</small></span>
+            <span class="keys"><kbd class="mod">Ctrl</kbd><kbd>O</kbd></span>
+          </button>
+          <button class="launch-item" type="button" id="openScriptBtn">
+            <span class="sq lg orange"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M10 13l-2 2 2 2M14 13l2 2-2 2"/></svg></span>
+            <span class="launch-text"><strong>Open a SQL Script&hellip;</strong><small>Run a .sql dump into a temporary database</small></span>
+          </button>
+          <button class="launch-item" type="button" id="sampleBtn">
+            <span class="sq lg purple"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></svg></span>
+            <span class="launch-text"><strong>Try the Sample Database</strong><small>A small store with customers, products and orders</small></span>
+          </button>
+        </div>
+
+        <p class="engine" id="engineStatus">Loading SQLite engine&hellip;</p>
+      </div>
+
+      <aside class="launcher-recent" aria-labelledby="recentLabel">
+        <div class="recent-head">
+          <span id="recentLabel">Recent</span>
+          <button class="link-btn" id="clearRecentBtn" type="button" hidden>Clear</button>
+        </div>
+        <div class="recent-list" id="recentList"></div>
+        <p class="recent-foot">Drop a file anywhere in this window to open it.</p>
+      </aside>
+    </section>
+
+    <div class="features">
+      <div class="feature">
         <span class="sq green"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
-        <div><h4>Private and read-only</h4><p>The file opens in your browser. Nothing is uploaded or changed.</p></div>
+        <h4>Private and read-only</h4><p>Files open in your browser. Nothing is uploaded or changed.</p>
       </div>
-      <div class="group-row">
+      <div class="feature">
         <span class="sq blue"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
-        <div><h4>Search everything</h4><p>Find tables by name and search every column of a table at once.</p></div>
+        <h4>Search everything</h4><p>Find tables by name and search every column at once.</p>
       </div>
-      <div class="group-row">
-        <span class="sq orange"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3"/></svg></span>
-        <div><h4>Sort and inspect</h4><p>Click a column header to sort. Click a row to see every value.</p></div>
+      <div class="feature">
+        <span class="sq indigo"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7l5 5-5 5M12 19h7"/></svg></span>
+        <h4>Run SQL queries</h4><p>Write SELECT statements in the Query tab and see results instantly.</p>
       </div>
-      <div class="group-row">
-        <span class="sq purple"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></span>
-        <div><h4>Export to CSV</h4><p>Download a whole table, or just your search results.</p></div>
+      <div class="feature">
+        <span class="sq pink"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></span>
+        <h4>Export to CSV</h4><p>Download a table, your search results or a query result.</p>
       </div>
     </div>
 
-    <div class="hint">Press <kbd>/</kbd> to search &nbsp;·&nbsp; <kbd>Esc</kbd> to clear &nbsp;·&nbsp; <kbd>&uarr;</kbd><kbd>&darr;</kbd> to move between rows</div>
+    <div class="hint"><kbd class="mod">Ctrl</kbd><kbd>O</kbd> open &nbsp;·&nbsp; <kbd>/</kbd> search &nbsp;·&nbsp; <kbd>Esc</kbd> clear &nbsp;·&nbsp; <kbd>&uarr;</kbd><kbd>&darr;</kbd> move between rows</div>
   </div>
 </div>
 
@@ -130,6 +159,7 @@
       <div class="seg" role="tablist" aria-label="View">
         <button role="tab" id="tabData" aria-selected="true" type="button">Data</button>
         <button role="tab" id="tabStructure" aria-selected="false" type="button">Structure</button>
+        <button role="tab" id="tabQuery" aria-selected="false" type="button">Query</button>
       </div>
       <input class="field row-search" type="search" id="search" placeholder="Search all columns" autocomplete="off">
       <button class="btn" id="exportBtn" type="button" title="Export as CSV">
