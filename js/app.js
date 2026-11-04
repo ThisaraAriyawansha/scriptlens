@@ -25,6 +25,8 @@
   var pager = $("pager"), prevBtn = $("prevBtn"), nextBtn = $("nextBtn"), pageInfo = $("pageInfo");
   var scrim = $("scrim"), drawer = $("drawer"), drawerTitle = $("drawerTitle"), drawerBody = $("drawerBody");
   var dropOverlay = $("dropOverlay"), toast = $("toast");
+  var themeBtn = $("themeBtn"), themeMenu = $("themeMenu");
+  var themeItems = themeMenu.querySelectorAll(".menu-item");
 
   var TABLE_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>';
   var VIEW_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
@@ -46,6 +48,70 @@
     clearTimeout(showToast.t);
     showToast.t = setTimeout(function () { toast.hidden = true; }, 2200);
   }
+
+  // Theme: "light" (default) / "dark" set data-theme; "system" follows the OS.
+  var THEME_KEY = "scriptlens-theme";
+  var THEME_LABELS = { system: "System", light: "Light", dark: "Dark" };
+  var THEME_ICONS = {
+    system: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>',
+    light: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>',
+    dark: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>'
+  };
+
+  function getTheme() {
+    var t = null;
+    try { t = localStorage.getItem(THEME_KEY); } catch (e) {}
+    return THEME_LABELS[t] ? t : "light";
+  }
+  function applyTheme(theme) {
+    if (theme === "system") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", theme);
+    var label = "Appearance: " + THEME_LABELS[theme];
+    themeBtn.innerHTML = THEME_ICONS[theme];
+    themeBtn.title = label;
+    themeBtn.setAttribute("aria-label", label);
+    for (var i = 0; i < themeItems.length; i++) {
+      themeItems[i].setAttribute("aria-checked", themeItems[i].dataset.themeValue === theme ? "true" : "false");
+    }
+  }
+  function openThemeMenu() {
+    themeMenu.hidden = false;
+    themeBtn.setAttribute("aria-expanded", "true");
+    themeMenu.querySelector('[aria-checked="true"]').focus();
+  }
+  function closeThemeMenu(refocus) {
+    if (themeMenu.hidden) return;
+    themeMenu.hidden = true;
+    themeBtn.setAttribute("aria-expanded", "false");
+    if (refocus) themeBtn.focus();
+  }
+  applyTheme(getTheme());
+  themeBtn.addEventListener("click", function () {
+    if (themeMenu.hidden) openThemeMenu(); else closeThemeMenu(false);
+  });
+  themeMenu.addEventListener("click", function (e) {
+    var item = e.target.closest(".menu-item");
+    if (!item) return;
+    var theme = item.dataset.themeValue;
+    try { localStorage.setItem(THEME_KEY, theme); } catch (e2) {}
+    applyTheme(theme);
+    closeThemeMenu(true);
+  });
+  themeMenu.addEventListener("mousemove", function (e) {
+    var item = e.target.closest(".menu-item");
+    if (item && document.activeElement !== item) item.focus();
+  });
+  themeMenu.addEventListener("keydown", function (e) {
+    var items = Array.prototype.slice.call(themeItems);
+    var i = items.indexOf(document.activeElement);
+    if (e.key === "ArrowDown") { e.preventDefault(); items[(i + 1) % items.length].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(i - 1 + items.length) % items.length].focus(); }
+    else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeThemeMenu(true); }
+    else if (e.key === "Tab") closeThemeMenu(false);
+  });
+  document.addEventListener("mousedown", function (e) {
+    if (!themeMenu.hidden && !e.target.closest(".menu-wrap")) closeThemeMenu(false);
+  });
 
   // Highlight every case-insensitive match of q inside el's text.
   function setHighlighted(el, text, q) {
