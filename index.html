@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SQLite Viewer</title>
+<style>
+  :root {
+    --window: #f5f5f7;
+    --toolbar: rgba(246, 246, 248, 0.82);
+    --sidebar: rgba(234, 234, 238, 0.78);
+    --content: #ffffff;
+    --group: #ffffff;
+    --text: #1d1d1f;
+    --muted: #86868b;
+    --line: rgba(0, 0, 0, 0.1);
+    --line-soft: rgba(0, 0, 0, 0.06);
+    --stripe: #f7f7f9;
+    --hover: rgba(0, 0, 0, 0.04);
+    --accent: #007aff;
+    --accent-press: #0062cc;
+    --accent-soft: rgba(0, 122, 255, 0.12);
+    --sel-sidebar: rgba(0, 0, 0, 0.09);
+    --field: rgba(0, 0, 0, 0.055);
+    --btn: #ffffff;
+    --btn-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.16), 0 1px 1.5px rgba(0, 0, 0, 0.1);
+    --seg-track: rgba(0, 0, 0, 0.06);
+    --seg-on: #ffffff;
+    --green: #34c759;
+    --purple: #af52de;
+    --orange: #ff9500;
+    --red: #ff3b30;
+    --hl: rgba(255, 204, 0, 0.45);
+    --hud: rgba(30, 30, 32, 0.86);
+    --shadow-panel: -10px 0 40px rgba(0, 0, 0, 0.14), 0 0 0 0.5px rgba(0, 0, 0, 0.12);
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --window: #1e1e20;
+      --toolbar: rgba(40, 40, 43, 0.82);
+      --sidebar: rgba(44, 44, 48, 0.78);
+      --content: #1e1e1e;
+      --group: #2a2a2d;
+      --text: #f5f5f7;
+      --muted: #98989d;
+      --line: rgba(255, 255, 255, 0.1);
+      --line-soft: rgba(255, 255, 255, 0.06);
+      --stripe: #232325;
+      --hover: rgba(255, 255, 255, 0.05);
+      --accent: #0a84ff;
+      --accent-press: #409cff;
+      --accent-soft: rgba(10, 132, 255, 0.2);
+      --sel-sidebar: rgba(255, 255, 255, 0.12);
+      --field: rgba(255, 255, 255, 0.09);
+      --btn: #5a5a5e;
+      --btn-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 1px 1.5px rgba(0, 0, 0, 0.3);
+      --seg-track: rgba(255, 255, 255, 0.08);
+      --seg-on: #636366;
+      --hl: rgba(255, 214, 10, 0.35);
+      --hud: rgba(60, 60, 64, 0.9);
+      --shadow-panel: -10px 0 40px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --window: #1e1e20;
+    --toolbar: rgba(40, 40, 43, 0.82);
+    --sidebar: rgba(44, 44, 48, 0.78);
+    --content: #1e1e1e;
+    --group: #2a2a2d;
+    --text: #f5f5f7;
+    --muted: #98989d;
+    --line: rgba(255, 255, 255, 0.1);
+    --line-soft: rgba(255, 255, 255, 0.06);
+    --stripe: #232325;
+    --hover: rgba(255, 255, 255, 0.05);
+    --accent: #0a84ff;
+    --accent-press: #409cff;
+    --accent-soft: rgba(10, 132, 255, 0.2);
+    --sel-sidebar: rgba(255, 255, 255, 0.12);
+    --field: rgba(255, 255, 255, 0.09);
+    --btn: #5a5a5e;
+    --btn-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 1px 1.5px rgba(0, 0, 0, 0.3);
+    --seg-track: rgba(255, 255, 255, 0.08);
+    --seg-on: #636366;
+    --hl: rgba(255, 214, 10, 0.35);
+    --hud: rgba(60, 60, 64, 0.9);
+    --shadow-panel: -10px 0 40px rgba(0, 0, 0, 0.5), 0 0 0 0.5px rgba(255, 255, 255, 0.12);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background: var(--window);
+    color: var(--text);
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+  }
+  [hidden] { display: none !important; }
+  svg { flex-shrink: 0; }
+
+  /* Controls */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--btn);
+    color: var(--text);
+    border: 0;
+    box-shadow: var(--btn-shadow);
+    padding: 4px 12px;
+    min-height: 24px;
+    border-radius: 6px;
+    font: inherit;
+    font-weight: 500;
+    cursor: default;
+    white-space: nowrap;
+  }
+  .btn:active { filter: brightness(0.93); }
+  .btn:disabled { opacity: 0.4; }
+  .btn.primary {
+    background: linear-gradient(180deg, #3d9bff 0%, var(--accent) 100%);
+    color: #fff;
+    box-shadow: 0 0 0 0.5px rgba(0, 80, 200, 0.5), 0 1px 1.5px rgba(0, 0, 0, 0.15);
+  }
+  .btn.primary:active { background: var(--accent-press); }
+  .btn.large { padding: 7px 18px; font-size: 14px; border-radius: 8px; }
+  .btn.plain { background: none; box-shadow: none; color: var(--muted); padding: 4px 6px; }
+  .btn.plain:hover { background: var(--hover); color: var(--text); }
+  .btn:focus-visible, .field:focus-visible, .table-item:focus-visible, .seg button:focus-visible,
+  th button:focus-visible, tbody tr:focus-visible, .check input:focus-visible {
+    outline: 3px solid rgba(0, 122, 255, 0.45);
+    outline-offset: 0;
+  }
+  .field {
+    width: 100%;
+    padding: 5px 10px 5px 28px;
+    border: 0;
+    border-radius: 7px;
+    background: var(--field) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%2386868b' stroke-width='2.6' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-3.5-3.5'/%3E%3C/svg%3E") no-repeat 9px 50%;
+    color: var(--text);
+    font: inherit;
+  }
+  .field::placeholder { color: var(--muted); }
+  .field:focus { outline: none; box-shadow: 0 0 0 3.5px rgba(0, 122, 255, 0.4); }
+  #fileInput { display: none; }
+
+  .seg {
+    display: inline-flex;
+    padding: 2px;
+    gap: 2px;
+    background: var(--seg-track);
+    border-radius: 7px;
+  }
+  .seg button {
+    border: 0; background: none; color: var(--text);
+    font: inherit; font-weight: 500;
+    padding: 3px 14px; border-radius: 5px; cursor: default;
+  }
+  .seg button[aria-selected="true"] {
+    background: var(--seg-on);
+    box-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.12);
+  }
+
+  /* Unified title bar / toolbar */
+  .titlebar {
+    position: relative;
+    z-index: 5;
+    flex-shrink: 0;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    background: var(--toolbar);
+    backdrop-filter: saturate(180%) blur(24px);
+    -webkit-backdrop-filter: saturate(180%) blur(24px);
+    border-bottom: 1px solid var(--line);
+  }
+  .app-icon {
+    width: 28px; height: 28px;
+    border-radius: 7px;
+    display: grid; place-items: center;
+    color: #fff;
+    background: linear-gradient(180deg, #5ac8fa 0%, #007aff 100%);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), inset 0 0 0 0.5px rgba(255, 255, 255, 0.25);
+  }
+  .app-title { min-width: 0; line-height: 1.2; }
+  .app-title strong { display: block; font-size: 13px; font-weight: 600; }
+  .app-title small {
+    display: block; color: var(--muted); font-size: 11px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .titlebar .spacer { flex: 1; }
+
+  /* Layout */
+  .body { flex: 1; display: flex; min-height: 0; }
+  .sidebar {
+    width: 250px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--sidebar);
+    backdrop-filter: saturate(180%) blur(30px);
+    -webkit-backdrop-filter: saturate(180%) blur(30px);
+    border-right: 1px solid var(--line);
+    min-height: 0;
+  }
+  .side-head { padding: 12px 12px 6px; display: flex; flex-direction: column; gap: 8px; }
+  .side-label {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: 6px 6px 0;
+    font-size: 11px; font-weight: 600; color: var(--muted);
+  }
+  .check { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; margin: 0 4px; user-select: none; }
+  .check input { accent-color: var(--accent); margin: 0; }
+  .table-list { flex: 1; overflow-y: auto; padding: 2px 10px 12px; }
+  .table-item {
+    display: flex; align-items: center; gap: 8px;
+    width: 100%;
+    background: none; border: 0; border-radius: 6px;
+    color: var(--text); font: inherit; text-align: left;
+    padding: 5px 8px;
+    cursor: default;
+  }
+  .table-item svg { color: var(--accent); }
+  .table-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .table-item .count { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .table-item.empty-table .name, .table-item.empty-table svg { opacity: 0.55; }
+  .table-item.active { background: var(--sel-sidebar); }
+  .table-item.active .name { font-weight: 600; }
+  .table-item mark, td mark, .detail mark { background: var(--hl); color: inherit; border-radius: 2px; }
+  .side-empty { color: var(--muted); font-size: 12px; padding: 16px 8px; text-align: center; }
+
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--content); }
+  .toolbar {
+    flex-shrink: 0;
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .toolbar .tname { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
+  .toolbar .tmeta { color: var(--muted); }
+  .toolbar .spacer { flex: 1; }
+  .row-search { width: 240px; }
+
+  .grid-wrap { flex: 1; min-height: 0; overflow: auto; }
+
+  /* Finder-style list */
+  table { border-collapse: separate; border-spacing: 0; width: 100%; }
+  th, td {
+    padding: 5px 12px;
+    text-align: left;
+    white-space: nowrap;
+    max-width: 320px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  th {
+    position: sticky; top: 0; z-index: 1;
+    background: var(--toolbar);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    font-weight: 500; font-size: 12px; color: var(--muted);
+    border-bottom: 1px solid var(--line);
+    padding: 0;
+  }
+  th + th { box-shadow: inset 1px 0 0 var(--line-soft); }
+  th button {
+    display: flex; align-items: center; gap: 6px;
+    width: 100%;
+    padding: 6px 12px;
+    background: none; border: 0;
+    font: inherit; color: inherit; text-align: left;
+    cursor: default;
+  }
+  th button:hover { color: var(--text); }
+  th .type { font-size: 10px; opacity: 0.75; text-transform: lowercase; }
+  th .arrow { margin-left: auto; font-size: 9px; color: var(--text); }
+  th.plain { padding: 6px 12px; }
+  .rownum { color: var(--muted); font-size: 11px; text-align: right; width: 1%; font-variant-numeric: tabular-nums; }
+  tbody tr:nth-child(even) td { background: var(--stripe); }
+  tbody tr:hover td { background: var(--accent-soft); }
+  tbody tr:focus td { background: var(--accent); color: #fff; }
+  tbody tr:focus td.null, tbody tr:focus .rownum { color: rgba(255, 255, 255, 0.75); }
+  tbody tr:focus { outline: none; }
+  td.null { color: var(--muted); }
+  td.num { font-variant-numeric: tabular-nums; }
+  .tag { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 5px; background: var(--accent-soft); color: var(--accent); }
+  .tag.green { background: rgba(52, 199, 89, 0.16); color: #248a3d; }
+
+  .sql-block {
+    margin: 0 16px 16px; padding: 12px 14px;
+    border-radius: 8px;
+    background: var(--stripe);
+    border: 1px solid var(--line-soft);
+    font-family: "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px; line-height: 1.55;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  .section-label { padding: 18px 16px 8px; font-weight: 600; font-size: 11px; color: var(--muted); }
+
+  /* Status bar */
+  .statusbar {
+    height: 30px;
+    flex-shrink: 0;
+    display: flex; align-items: center; gap: 10px;
+    padding: 0 12px;
+    border-top: 1px solid var(--line);
+    background: var(--toolbar);
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .statusbar .lock { display: inline-flex; align-items: center; gap: 5px; }
+  .statusbar .spacer { flex: 1; }
+  .pager { display: inline-flex; align-items: center; gap: 6px; }
+  .pager .btn { padding: 0 8px; min-height: 20px; font-size: 12px; }
+
+  /* Empty states */
+  .empty {
+    min-height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 5px; text-align: center;
+    color: var(--muted); padding: 40px 24px;
+  }
+  .empty .icon { color: var(--muted); opacity: 0.55; margin-bottom: 8px; }
+  .empty h3 { margin: 0; color: var(--text); font-size: 17px; font-weight: 600; }
+  .empty p { margin: 0; max-width: 360px; line-height: 1.45; }
+  .empty.error h3 { color: var(--red); }
+  .empty .btn { margin-top: 12px; }
+
+  /* Welcome */
+  .welcome { flex: 1; overflow: auto; display: flex; justify-content: center; padding: 40px 16px; }
+  .welcome-inner { width: 100%; max-width: 640px; display: flex; flex-direction: column; align-items: center; gap: 22px; margin: auto 0; }
+  .dropzone {
+    width: 100%;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    gap: 6px;
+    padding: 36px 24px;
+    border: 2px dashed transparent;
+    border-radius: 18px;
+  }
+  .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); }
+  .big-icon {
+    width: 96px; height: 96px; border-radius: 22px;
+    display: grid; place-items: center; color: #fff;
+    background: linear-gradient(180deg, #5ac8fa 0%, #007aff 100%);
+    box-shadow: 0 10px 24px rgba(0, 122, 255, 0.3), 0 2px 4px rgba(0, 0, 0, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+    margin-bottom: 14px;
+  }
+  .dropzone h1 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+  .dropzone p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.45; }
+  .dropzone .actions { margin-top: 18px; }
+  .engine { font-size: 12px; margin-top: 10px !important; }
+
+  /* System Settings–style grouped list */
+  .group {
+    width: 100%;
+    background: var(--group);
+    border-radius: 10px;
+    box-shadow: 0 0 0 0.5px var(--line), 0 1px 2px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+  }
+  .group-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; }
+  .group-row + .group-row { border-top: 1px solid var(--line-soft); margin-left: 54px; padding-left: 0; }
+  .group-row h4 { margin: 0 0 1px; font-size: 13px; font-weight: 600; }
+  .group-row p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+  .sq { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: #fff; }
+  .group-row + .group-row .sq { margin-left: -42px; }
+  .sq.green { background: var(--green); }
+  .sq.blue { background: var(--accent); }
+  .sq.purple { background: var(--purple); }
+  .sq.orange { background: var(--orange); }
+  .hint { color: var(--muted); font-size: 12px; text-align: center; }
+  kbd {
+    font-family: inherit; font-size: 11px;
+    padding: 0 5px; border-radius: 4px;
+    background: var(--field); border: 0.5px solid var(--line);
+  }
+
+  /* Drag overlay */
+  .drop-overlay {
+    position: fixed; inset: 8px; z-index: 50;
+    border-radius: 14px;
+    background: rgba(0, 122, 255, 0.08);
+    border: 3px solid var(--accent);
+    display: grid; place-items: center;
+    font-size: 17px; font-weight: 600; color: var(--accent);
+    pointer-events: none;
+  }
+
+  /* Inspector panel */
+  .scrim { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.12); z-index: 20; }
+  .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 21;
+    width: min(420px, 100%);
+    background: var(--toolbar);
+    backdrop-filter: saturate(180%) blur(40px);
+    -webkit-backdrop-filter: saturate(180%) blur(40px);
+    box-shadow: var(--shadow-panel);
+    display: flex; flex-direction: column;
+  }
+  .drawer-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .drawer-head h3 { margin: 0; font-size: 14px; font-weight: 600; flex: 1; }
+  .drawer-body { flex: 1; overflow-y: auto; padding: 14px 16px; }
+  .drawer-body .group-row { display: block; margin-left: 0; padding: 9px 14px; }
+  .drawer-body .group-row + .group-row { margin-left: 14px; padding-left: 0; }
+  .detail .k { font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 2px; }
+  .detail .v { white-space: pre-wrap; word-break: break-word; line-height: 1.45; user-select: text; }
+  .detail .v.null { color: var(--muted); }
+  .drawer-foot { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; gap: 8px; justify-content: flex-end; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 48px; transform: translateX(-50%);
+    background: var(--hud); color: #fff;
+    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    padding: 9px 16px; border-radius: 12px;
+    font-size: 13px; font-weight: 500;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+    z-index: 60;
+  }
+
+  @media (max-width: 860px) {
+    .row-search { width: 100%; order: 10; }
+    .toolbar .tname { max-width: 60%; }
+  }
+  @media (max-width: 680px) {
+    .titlebar { padding: 0 16px; }
+    .body { flex-direction: column; }
+    .sidebar { width: 100%; max-height: 38vh; border-right: 0; border-bottom: 1px solid var(--line); }
+    .open-label { display: none; }
+    .dropzone h1 { font-size: 22px; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .table-item, .seg button, tbody tr td { transition: background-color 0.1s; }
+    .drawer:not([hidden]) { animation: slideIn 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    @keyframes slideIn { from { transform: translateX(30px); opacity: 0; } }
+  }
+</style>
+</head>
+<body>
+
+<header class="titlebar">
+  <div class="app-icon" aria-hidden="true">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+  </div>
+  <div class="app-title">
+    <strong>SQLite Viewer</strong>
+    <small id="fileName">No database open</small>
+  </div>
+  <span class="spacer"></span>
+  <button class="btn" id="openBtn" type="button">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+    <span class="open-label">Open&hellip;</span>
+  </button>
+  <input type="file" id="fileInput" accept=".sqlite,.sqlite3,.db,.db3,.s3db,application/x-sqlite3,application/octet-stream">
+</header>
+
+<!-- Welcome screen -->
+<div class="welcome" id="welcome">
+  <div class="welcome-inner">
+    <div class="dropzone" id="dropzone">
+      <div class="big-icon" aria-hidden="true">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/></svg>
+      </div>
+      <h1>Open a Database</h1>
+      <p>Drop a .sqlite, .sqlite3 or .db file anywhere in this window,<br>or choose one from your computer.</p>
+      <div class="actions">
+        <button class="btn primary large" type="button" id="openBtn2">Choose File&hellip;</button>
+      </div>
+      <p class="engine" id="engineStatus">Loading SQLite engine&hellip;</p>
+    </div>
+
+    <div class="group">
+      <div class="group-row">
+        <span class="sq green"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+        <div><h4>Private and read-only</h4><p>The file opens in your browser. Nothing is uploaded or changed.</p></div>
+      </div>
+      <div class="group-row">
+        <span class="sq blue"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg></span>
+        <div><h4>Search everything</h4><p>Find tables by name and search every column of a table at once.</p></div>
+      </div>
+      <div class="group-row">
+        <span class="sq orange"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3"/></svg></span>
+        <div><h4>Sort and inspect</h4><p>Click a column header to sort. Click a row to see every value.</p></div>
+      </div>
+      <div class="group-row">
+        <span class="sq purple"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></span>
+        <div><h4>Export to CSV</h4><p>Download a whole table, or just your search results.</p></div>
+      </div>
+    </div>
+
+    <div class="hint">Press <kbd>/</kbd> to search &nbsp;·&nbsp; <kbd>Esc</kbd> to clear &nbsp;·&nbsp; <kbd>&uarr;</kbd><kbd>&darr;</kbd> to move between rows</div>
+  </div>
+</div>
+
+<!-- Viewer -->
+<div class="body" id="viewer" hidden>
+  <aside class="sidebar" aria-label="Tables">
+    <div class="side-head">
+      <input class="field" type="search" id="tableSearch" placeholder="Find a table" autocomplete="off">
+      <label class="check"><input type="checkbox" id="hideEmpty"> Hide empty tables</label>
+      <div class="side-label">Tables <span id="tableCount">0</span></div>
+    </div>
+    <nav class="table-list" id="tableList"></nav>
+  </aside>
+
+  <main class="main">
+    <div class="toolbar">
+      <span class="tname" id="tableTitle"></span>
+      <span class="tmeta" id="rowCount"></span>
+      <span class="spacer"></span>
+      <div class="seg" role="tablist" aria-label="View">
+        <button role="tab" id="tabData" aria-selected="true" type="button">Data</button>
+        <button role="tab" id="tabStructure" aria-selected="false" type="button">Structure</button>
+      </div>
+      <input class="field row-search" type="search" id="search" placeholder="Search all columns" autocomplete="off">
+      <button class="btn" id="exportBtn" type="button" title="Export as CSV">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>
+        Export
+      </button>
+    </div>
+
+    <div class="grid-wrap" id="gridWrap"></div>
+
+    <div class="statusbar">
+      <span class="lock">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        Read-only
+      </span>
+      <span id="rangeInfo"></span>
+      <span class="spacer"></span>
+      <span class="pager" id="pager">
+        <button class="btn" id="prevBtn" type="button" aria-label="Previous page">&#8249;</button>
+        <span id="pageInfo"></span>
+        <button class="btn" id="nextBtn" type="button" aria-label="Next page">&#8250;</button>
+      </span>
+    </div>
+  </main>
+</div>
+
+<!-- Row inspector -->
+<div class="scrim" id="scrim" hidden></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" hidden>
+  <div class="drawer-head">
+    <h3 id="drawerTitle">Row</h3>
+    <button class="btn plain" id="drawerClose" type="button" aria-label="Close">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="drawer-body"><div class="group" id="drawerBody"></div></div>
+  <div class="drawer-foot">
+    <button class="btn" id="copyJsonBtn" type="button">Copy as JSON</button>
+    <button class="btn primary" id="drawerDone" type="button">Done</button>
+  </div>
+</aside>
+
+<div class="drop-overlay" id="dropOverlay" hidden>Drop to open</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/sql-wasm.js"></script>
+<script>
+(function () {
+  var PAGE_SIZE = 100;
+  var SQL = null;
+  var db = null;
+  var tables = [];          // [{ name, type, count }]
+  var currentTable = null;
+  var currentColumns = [];  // PRAGMA table_info rows
+  var currentPage = 0;
+  var filteredRows = 0;
+  var pageData = null;      // { columns, values } of the visible page
+  var sortCol = null;
+  var sortDir = "ASC";
+  var view = "data";
+  var searchTimer = null;
+  var openRow = null;
+
+  function $(id) { return document.getElementById(id); }
+  var openBtn = $("openBtn"), openBtn2 = $("openBtn2");
+  var fileInput = $("fileInput"), fileName = $("fileName"), engineStatus = $("engineStatus");
+  var welcome = $("welcome"), dropzone = $("dropzone"), viewer = $("viewer");
+  var tableList = $("tableList"), tableCount = $("tableCount"), tableSearch = $("tableSearch"), hideEmpty = $("hideEmpty");
+  var tableTitle = $("tableTitle"), rowCount = $("rowCount"), search = $("search"), exportBtn = $("exportBtn");
+  var tabData = $("tabData"), tabStructure = $("tabStructure");
+  var gridWrap = $("gridWrap"), rangeInfo = $("rangeInfo");
+  var pager = $("pager"), prevBtn = $("prevBtn"), nextBtn = $("nextBtn"), pageInfo = $("pageInfo");
+  var scrim = $("scrim"), drawer = $("drawer"), drawerTitle = $("drawerTitle"), drawerBody = $("drawerBody");
+  var dropOverlay = $("dropOverlay"), toast = $("toast");
+
+  var TABLE_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>';
+  var VIEW_ICON = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var EMPTY_ICONS = {
+    search: '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>',
+    table: '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 4v16"/></svg>',
+    error: '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M12 3l9.5 17h-19z"/><path d="M12 10v4M12 17v.5"/></svg>'
+  };
+
+  function quoteIdent(name) {
+    return '"' + String(name).replace(/"/g, '""') + '"';
+  }
+  function fmt(n) { return Number(n).toLocaleString(); }
+  function escapeLike(s) { return s.replace(/[\\%_]/g, "\\$&"); }
+
+  function showToast(text) {
+    toast.textContent = text;
+    toast.hidden = false;
+    clearTimeout(showToast.t);
+    showToast.t = setTimeout(function () { toast.hidden = true; }, 2200);
+  }
+
+  // Highlight every case-insensitive match of q inside el's text.
+  function setHighlighted(el, text, q) {
+    el.textContent = "";
+    if (!q) { el.textContent = text; return; }
+    var lower = text.toLowerCase(), ql = q.toLowerCase(), i = 0, j;
+    while ((j = lower.indexOf(ql, i)) !== -1) {
+      el.appendChild(document.createTextNode(text.slice(i, j)));
+      var m = document.createElement("mark");
+      m.textContent = text.slice(j, j + q.length);
+      el.appendChild(m);
+      i = j + q.length;
+    }
+    el.appendChild(document.createTextNode(text.slice(i)));
+  }
+
+  function showMessage(title, text, kind, action) {
+    gridWrap.innerHTML = "";
+    var div = document.createElement("div");
+    div.className = "empty" + (kind === "error" ? " error" : "");
+    div.innerHTML = '<div class="icon">' + (EMPTY_ICONS[kind] || EMPTY_ICONS.table) + "</div><h3></h3><p></p>";
+    div.querySelector("h3").textContent = title;
+    div.querySelector("p").textContent = text;
+    if (action) {
+      var b = document.createElement("button");
+      b.className = "btn";
+      b.type = "button";
+      b.textContent = action.label;
+      b.addEventListener("click", action.run);
+      div.appendChild(b);
+    }
+    gridWrap.appendChild(div);
+  }
+
+  // ---- Engine & opening files ----
+  initSqlJs({
+    locateFile: function (f) {
+      return "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.10.3/" + f;
+    }
+  }).then(function (lib) {
+    SQL = lib;
+    engineStatus.textContent = "Ready — your file never leaves this computer.";
+  }).catch(function () {
+    engineStatus.textContent = "Couldn't load the SQLite engine. Check your internet connection and reload the page.";
+    engineStatus.style.color = "var(--red)";
+  });
+
+  function pick() { fileInput.click(); }
+  openBtn.addEventListener("click", pick);
+  openBtn2.addEventListener("click", pick);
+
+  fileInput.addEventListener("change", function () {
+    if (fileInput.files[0]) openFile(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  function openFile(file) {
+    if (!SQL) {
+      showToast("The SQLite engine is still loading. Try again in a moment.");
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var next = new SQL.Database(new Uint8Array(reader.result));
+        next.exec("SELECT name FROM sqlite_master LIMIT 1");   // throws if not a database
+        next.run("PRAGMA query_only = ON;");
+        if (db) db.close();
+        db = next;
+        fileName.textContent = file.name + " — " + formatSize(file.size);
+        welcome.hidden = true;
+        viewer.hidden = false;
+        loadTables();
+      } catch (e) {
+        showToast("“" + file.name + "” isn't a SQLite database.");
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function formatSize(b) {
+    if (b < 1024) return b + " bytes";
+    if (b < 1048576) return (b / 1024).toFixed(1) + " KB";
+    return (b / 1048576).toFixed(1) + " MB";
+  }
+
+  // Drag & drop anywhere on the page
+  var dragDepth = 0;
+  document.addEventListener("dragenter", function (e) {
+    if (!e.dataTransfer || Array.prototype.indexOf.call(e.dataTransfer.types, "Files") === -1) return;
+    dragDepth++;
+    dropOverlay.hidden = false;
+    dropzone.classList.add("drag");
+  });
+  document.addEventListener("dragleave", function () {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) { dropOverlay.hidden = true; dropzone.classList.remove("drag"); }
+  });
+  document.addEventListener("dragover", function (e) { e.preventDefault(); });
+  document.addEventListener("drop", function (e) {
+    e.preventDefault();
+    dragDepth = 0;
+    dropOverlay.hidden = true;
+    dropzone.classList.remove("drag");
+    var f = e.dataTransfer && e.dataTransfer.files[0];
+    if (f) openFile(f);
+  });
+
+  // ---- Table list ----
+  function loadTables() {
+    var res = db.exec("SELECT name, type FROM sqlite_master WHERE type IN ('table','view') AND name NOT LIKE 'sqlite_%' ORDER BY name COLLATE NOCASE");
+    tables = (res.length ? res[0].values : []).map(function (r) {
+      var count = 0;
+      try { count = db.exec("SELECT COUNT(*) FROM " + quoteIdent(r[0]))[0].values[0][0]; } catch (e) {}
+      return { name: r[0], type: r[1], count: count };
+    });
+    tableCount.textContent = tables.length;
+    tableSearch.value = "";
+    currentTable = null;
+    if (!tables.length) {
+      renderTableList();
+      tableTitle.textContent = "";
+      rowCount.textContent = "";
+      pager.hidden = true;
+      rangeInfo.textContent = "";
+      showMessage("No Tables", "This database doesn't contain any tables.", "table");
+      return;
+    }
+    var first = tables.filter(function (t) { return t.count > 0; })[0] || tables[0];
+    selectTable(first.name);
+  }
+
+  function renderTableList() {
+    var q = tableSearch.value.trim();
+    var ql = q.toLowerCase();
+    tableList.innerHTML = "";
+    var shown = 0;
+    tables.forEach(function (t) {
+      if (hideEmpty.checked && t.count === 0 && t.name !== currentTable) return;
+      if (ql && t.name.toLowerCase().indexOf(ql) === -1) return;
+      shown++;
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "table-item" + (t.name === currentTable ? " active" : "") + (t.count === 0 ? " empty-table" : "");
+      btn.title = t.name + (t.type === "view" ? " (view)" : "");
+      btn.innerHTML = (t.type === "view" ? VIEW_ICON : TABLE_ICON) + "<span class='name'></span><span class='count'></span>";
+      setHighlighted(btn.querySelector(".name"), t.name, q);
+      btn.querySelector(".count").textContent = fmt(t.count);
+      btn.addEventListener("click", function () { selectTable(t.name); });
+      tableList.appendChild(btn);
+    });
+    if (!shown) {
+      var d = document.createElement("div");
+      d.className = "side-empty";
+      d.textContent = q ? "No tables match “" + q + "”" : "No tables to show";
+      tableList.appendChild(d);
+    }
+  }
+
+  tableSearch.addEventListener("input", renderTableList);
+  hideEmpty.addEventListener("change", renderTableList);
+  tableSearch.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      var first = tableList.querySelector(".table-item");
+      if (first) first.click();
+    }
+  });
+
+  function selectTable(name) {
+    currentTable = name;
+    currentPage = 0;
+    sortCol = null;
+    sortDir = "ASC";
+    search.value = "";
+    try { currentColumns = db.exec("PRAGMA table_info(" + quoteIdent(name) + ")")[0].values; } catch (e) { currentColumns = []; }
+    renderTableList();
+    var active = tableList.querySelector(".table-item.active");
+    if (active && active.scrollIntoView) active.scrollIntoView({ block: "nearest" });
+    render();
+  }
+
+  // ---- Data / Structure ----
+  function setView(v) {
+    view = v;
+    tabData.setAttribute("aria-selected", v === "data");
+    tabStructure.setAttribute("aria-selected", v === "structure");
+    search.hidden = v !== "data";
+    exportBtn.hidden = v !== "data";
+    render();
+  }
+  tabData.addEventListener("click", function () { setView("data"); });
+  tabStructure.addEventListener("click", function () { setView("structure"); });
+
+  function render() {
+    if (!currentTable) return;
+    var t = tables.filter(function (x) { return x.name === currentTable; })[0];
+    tableTitle.textContent = currentTable;
+    tableTitle.title = currentTable;
+    rowCount.textContent = fmt(t ? t.count : 0) + (t && t.count === 1 ? " row" : " rows");
+    if (view === "structure") renderStructure(); else renderData();
+  }
+
+  function whereClause() {
+    var q = search.value.trim();
+    if (!q || !currentColumns.length) return { sql: "", params: [] };
+    var like = "%" + escapeLike(q) + "%";
+    var parts = currentColumns.map(function (c) {
+      return "CAST(" + quoteIdent(c[1]) + " AS TEXT) LIKE ? ESCAPE '\\'";
+    });
+    return { sql: " WHERE " + parts.join(" OR "), params: currentColumns.map(function () { return like; }) };
+  }
+
+  function orderClause() {
+    return sortCol ? " ORDER BY " + quoteIdent(sortCol) + " " + sortDir : "";
+  }
+
+  function renderData() {
+    try {
+      var w = whereClause();
+      var from = " FROM " + quoteIdent(currentTable);
+      filteredRows = db.exec("SELECT COUNT(*)" + from + w.sql, w.params)[0].values[0][0];
+      var lastPage = Math.max(0, Math.ceil(filteredRows / PAGE_SIZE) - 1);
+      if (currentPage > lastPage) currentPage = lastPage;
+      var offset = currentPage * PAGE_SIZE;
+      var res = db.exec("SELECT *" + from + w.sql + orderClause() + " LIMIT ? OFFSET ?", w.params.concat([PAGE_SIZE, offset]));
+      var q = search.value.trim();
+
+      pager.hidden = filteredRows <= PAGE_SIZE;
+      pageInfo.textContent = (currentPage + 1) + " of " + (lastPage + 1);
+      prevBtn.disabled = currentPage === 0;
+      nextBtn.disabled = currentPage >= lastPage;
+      exportBtn.disabled = filteredRows === 0;
+
+      if (!res.length) {
+        pageData = null;
+        rangeInfo.textContent = "";
+        if (q) {
+          showMessage("No Results", "Nothing in “" + currentTable + "” contains “" + q + "”.", "search",
+            { label: "Clear Search", run: function () { search.value = ""; currentPage = 0; renderData(); search.focus(); } });
+        } else {
+          showMessage("No Rows", "This table is empty.", "table");
+        }
+        return;
+      }
+
+      pageData = res[0];
+      rangeInfo.textContent = fmt(offset + 1) + "–" + fmt(offset + pageData.values.length) +
+        " of " + fmt(filteredRows) + (q ? " matches" : "");
+
+      var types = {};
+      currentColumns.forEach(function (c) { types[c[1]] = c[2]; });
+
+      var tbl = document.createElement("table");
+      var head = document.createElement("thead");
+      var hr = document.createElement("tr");
+      var corner = document.createElement("th");
+      corner.className = "plain rownum";
+      corner.textContent = "#";
+      hr.appendChild(corner);
+      pageData.columns.forEach(function (c) {
+        var th = document.createElement("th");
+        var b = document.createElement("button");
+        b.type = "button";
+        b.title = "Sort by " + c;
+        var label = document.createElement("span");
+        label.textContent = c;
+        b.appendChild(label);
+        if (types[c]) {
+          var s = document.createElement("span");
+          s.className = "type";
+          s.textContent = types[c];
+          b.appendChild(s);
+        }
+        if (sortCol === c) {
+          var a = document.createElement("span");
+          a.className = "arrow";
+          a.textContent = sortDir === "ASC" ? "▲" : "▼";
+          b.appendChild(a);
+          th.setAttribute("aria-sort", sortDir === "ASC" ? "ascending" : "descending");
+        }
+        b.addEventListener("click", function () {
+          if (sortCol !== c) { sortCol = c; sortDir = "ASC"; }
+          else if (sortDir === "ASC") sortDir = "DESC";
+          else sortCol = null;
+          currentPage = 0;
+          renderData();
+        });
+        th.appendChild(b);
+        hr.appendChild(th);
+      });
+      head.appendChild(hr);
+      tbl.appendChild(head);
+
+      var body = document.createElement("tbody");
+      pageData.values.forEach(function (row, ri) {
+        var tr = document.createElement("tr");
+        tr.tabIndex = 0;
+        tr.dataset.i = ri;
+        var n = document.createElement("td");
+        n.className = "rownum";
+        n.textContent = fmt(offset + ri + 1);
+        tr.appendChild(n);
+        row.forEach(function (cell) {
+          var td = document.createElement("td");
+          if (cell === null) {
+            td.textContent = "NULL";
+            td.className = "null";
+          } else if (cell instanceof Uint8Array) {
+            td.textContent = "BLOB — " + formatSize(cell.length);
+            td.className = "null";
+          } else {
+            var text = String(cell);
+            setHighlighted(td, text.length > 400 ? text.slice(0, 400) + "…" : text, q);
+            if (typeof cell === "number") td.className = "num";
+          }
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      });
+      tbl.appendChild(body);
+      gridWrap.innerHTML = "";
+      gridWrap.appendChild(tbl);
+    } catch (e) {
+      pageData = null;
+      rangeInfo.textContent = "";
+      pager.hidden = true;
+      showMessage("Can't Read This Table", e.message, "error");
+    }
+  }
+
+  function renderStructure() {
+    pager.hidden = true;
+    rangeInfo.textContent = currentColumns.length + (currentColumns.length === 1 ? " column" : " columns");
+    gridWrap.innerHTML = "";
+    if (!currentColumns.length) {
+      showMessage("No Column Information", "SQLite didn't report any columns for this table.", "table");
+      return;
+    }
+    var tbl = document.createElement("table");
+    tbl.innerHTML = "<thead><tr><th class='plain'>Column</th><th class='plain'>Type</th><th class='plain'>Key</th><th class='plain'>Required</th><th class='plain'>Default</th></tr></thead>";
+    var body = document.createElement("tbody");
+    currentColumns.forEach(function (c) {
+      var tr = document.createElement("tr");
+      var cells = [c[1], c[2] || "—", "", "", c[4] === null ? "—" : String(c[4])];
+      cells.forEach(function (v, i) {
+        var td = document.createElement("td");
+        if (i === 2 && c[5]) td.innerHTML = "<span class='tag'>Primary key</span>";
+        else if (i === 3 && c[3]) td.innerHTML = "<span class='tag green'>Not null</span>";
+        else td.textContent = v;
+        if (i === 0) td.style.fontWeight = "600";
+        if ((i === 1 || i === 4) && v === "—") td.className = "null";
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+    tbl.appendChild(body);
+    gridWrap.appendChild(tbl);
+
+    var sqlRes = db.exec("SELECT sql FROM sqlite_master WHERE name = ?", [currentTable]);
+    var sql = sqlRes.length ? sqlRes[0].values[0][0] : null;
+    if (sql) {
+      var label = document.createElement("div");
+      label.className = "section-label";
+      label.textContent = "Create Statement";
+      var pre = document.createElement("pre");
+      pre.className = "sql-block";
+      pre.textContent = sql;
+      gridWrap.appendChild(label);
+      gridWrap.appendChild(pre);
+    }
+  }
+
+  // ---- Search, paging, export ----
+  search.addEventListener("input", function () {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { currentPage = 0; renderData(); }, 200);
+  });
+  prevBtn.addEventListener("click", function () {
+    if (currentPage > 0) { currentPage--; renderData(); gridWrap.scrollTop = 0; }
+  });
+  nextBtn.addEventListener("click", function () {
+    currentPage++; renderData(); gridWrap.scrollTop = 0;
+  });
+
+  function csvCell(v) {
+    if (v === null) return "";
+    if (v instanceof Uint8Array) return "[BLOB " + v.length + " bytes]";
+    var s = String(v);
+    return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  exportBtn.addEventListener("click", function () {
+    try {
+      var w = whereClause();
+      var res = db.exec("SELECT * FROM " + quoteIdent(currentTable) + w.sql + orderClause(), w.params);
+      if (!res.length) return;
+      var lines = [res[0].columns.map(csvCell).join(",")];
+      res[0].values.forEach(function (r) { lines.push(r.map(csvCell).join(",")); });
+      var blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = currentTable + (search.value.trim() ? "-filtered" : "") + ".csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+      showToast("Exported " + fmt(res[0].values.length) + " rows");
+    } catch (e) {
+      showToast("Export failed: " + e.message);
+    }
+  });
+
+  // ---- Row inspector ----
+  function openDetails(i) {
+    if (!pageData || !pageData.values[i]) return;
+    openRow = i;
+    var row = pageData.values[i];
+    var q = search.value.trim();
+    drawerTitle.textContent = currentTable + " — Row " + fmt(currentPage * PAGE_SIZE + i + 1);
+    drawerBody.innerHTML = "";
+    pageData.columns.forEach(function (c, ci) {
+      var d = document.createElement("div");
+      d.className = "group-row detail";
+      var k = document.createElement("div");
+      k.className = "k";
+      k.textContent = c;
+      var v = document.createElement("div");
+      v.className = "v";
+      var cell = row[ci];
+      if (cell === null) { v.textContent = "NULL"; v.className = "v null"; }
+      else if (cell instanceof Uint8Array) { v.textContent = "BLOB — " + formatSize(cell.length); v.className = "v null"; }
+      else setHighlighted(v, String(cell), q);
+      d.appendChild(k);
+      d.appendChild(v);
+      drawerBody.appendChild(d);
+    });
+    scrim.hidden = false;
+    drawer.hidden = false;
+    $("drawerDone").focus();
+  }
+  function closeDetails() {
+    scrim.hidden = true;
+    drawer.hidden = true;
+    var tr = gridWrap.querySelector('tbody tr[data-i="' + openRow + '"]');
+    if (tr) tr.focus();
+  }
+  gridWrap.addEventListener("click", function (e) {
+    var tr = e.target.closest("tbody tr[data-i]");
+    if (tr) openDetails(+tr.dataset.i);
+  });
+  gridWrap.addEventListener("keydown", function (e) {
+    var tr = e.target.closest("tbody tr[data-i]");
+    if (!tr) return;
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDetails(+tr.dataset.i); }
+    else if (e.key === "ArrowDown" && tr.nextElementSibling) { e.preventDefault(); tr.nextElementSibling.focus(); }
+    else if (e.key === "ArrowUp" && tr.previousElementSibling) { e.preventDefault(); tr.previousElementSibling.focus(); }
+  });
+  scrim.addEventListener("click", closeDetails);
+  $("drawerClose").addEventListener("click", closeDetails);
+  $("drawerDone").addEventListener("click", closeDetails);
+  $("copyJsonBtn").addEventListener("click", function () {
+    var obj = {};
+    pageData.columns.forEach(function (c, ci) {
+      var v = pageData.values[openRow][ci];
+      obj[c] = v instanceof Uint8Array ? "[BLOB " + v.length + " bytes]" : v;
+    });
+    var text = JSON.stringify(obj, null, 2);
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(function () { showToast("Copied"); },
+        function () { showToast("Couldn't copy to clipboard"); });
+    }
+  });
+
+  // ---- Keyboard shortcuts ----
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      if (!drawer.hidden) { closeDetails(); return; }
+      if (document.activeElement === search && search.value) { search.value = ""; currentPage = 0; renderData(); return; }
+      if (document.activeElement === tableSearch && tableSearch.value) { tableSearch.value = ""; renderTableList(); }
+      return;
+    }
+    if (e.key === "/" && !viewer.hidden && drawer.hidden) {
+      var tag = document.activeElement && document.activeElement.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      e.preventDefault();
+      if (view === "data") search.focus(); else tableSearch.focus();
+    }
+  });
+})();
+</script>
+</body>
+</html>
